@@ -3,8 +3,9 @@ use std::{
     collections::VecDeque,
     marker::PhantomData,
     mem,
+    pin::Pin,
     rc::Rc,
-    task::{RawWaker, RawWakerVTable, Waker, Context}, pin::Pin,
+    task::{Context, RawWaker, RawWakerVTable, Waker},
 };
 
 use futures::{future::LocalBoxFuture, Future, FutureExt};
@@ -26,7 +27,6 @@ impl Default for Executor {
         Self::new()
     }
 }
-
 
 impl Executor {
     pub fn new() -> Self {
