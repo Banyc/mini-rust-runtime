@@ -100,7 +100,6 @@ impl AsyncRead for TcpStream {
     ) -> Poll<io::Result<usize>> {
         let fd = self.stream.as_raw_fd();
         unsafe {
-            // let b = &mut *(buf.unfilled_mut() as *mut [std::mem::MaybeUninit<u8>] as *mut [u8]);
             println!("read for fd {}", fd);
             match self.stream.read(buf) {
                 Ok(n) => {
