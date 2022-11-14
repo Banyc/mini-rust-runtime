@@ -34,11 +34,6 @@ impl Reactor {
     pub fn add(&mut self, fd: RawFd) {
         println!("[reactor] add fd {}", fd);
 
-        let flags =
-            nix::fcntl::OFlag::from_bits(nix::fcntl::fcntl(fd, nix::fcntl::F_GETFL).unwrap())
-                .unwrap();
-        let flags_nonblocking = flags | nix::fcntl::OFlag::O_NONBLOCK;
-        nix::fcntl::fcntl(fd, nix::fcntl::F_SETFL(flags_nonblocking)).unwrap();
         self.poller
             .add(fd, polling::Event::none(fd as usize))
             .unwrap();

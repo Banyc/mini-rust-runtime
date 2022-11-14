@@ -32,6 +32,7 @@ impl TcpListener {
         };
         let sk = Socket::new(domain, Type::STREAM, Some(Protocol::TCP))?;
         let addr = socket2::SockAddr::from(addr);
+        sk.set_nonblocking(true)?;
         sk.set_reuse_address(true)?;
         sk.bind(&addr)?;
         sk.listen(1024)?;
