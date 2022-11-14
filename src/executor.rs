@@ -65,7 +65,7 @@ impl Executor {
                 // consume all tasks
                 while let Some(t) = self.local_queue.pop() {
                     let future = t.future.borrow_mut();
-                    let w = waker(t.clone());
+                    let w = waker(Rc::clone(&t));
                     let mut context = Context::from_waker(&w);
                     let _ = Pin::new(future).as_mut().poll(&mut context);
                 }
@@ -130,7 +130,7 @@ impl Task {
     }
 
     fn wake_by_ref_(self: &Rc<Self>) {
-        EX.with(|ex| ex.local_queue.push(self.clone()));
+        EX.with(|ex| ex.local_queue.push(Rc::clone(self)));
     }
 }
 

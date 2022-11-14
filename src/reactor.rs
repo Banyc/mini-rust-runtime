@@ -9,7 +9,7 @@ use polling::{Event, Poller};
 
 #[inline]
 pub(crate) fn get_reactor() -> Rc<RefCell<Reactor>> {
-    crate::executor::EX.with(|ex| ex.reactor.clone())
+    crate::executor::EX.with(|ex| Rc::clone(&ex.reactor))
 }
 
 #[derive(Debug)]
