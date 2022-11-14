@@ -1,10 +1,9 @@
 //! Echo example.
 //! Use `nc 127.0.0.1 30000` to connect.
 
-use futures::StreamExt;
+use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
 use mini_rust_runtime::executor::Executor;
 use mini_rust_runtime::tcp::TcpListener;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 fn main() {
     let ex = Executor::new();

@@ -7,7 +7,7 @@ use std::{
     task::Poll,
 };
 
-use futures::Stream;
+use futures::{AsyncRead, AsyncWrite, Stream};
 use socket2::{Domain, Protocol, Socket, Type};
 
 use crate::{reactor::get_reactor, reactor::Reactor};
@@ -91,22 +91,20 @@ impl Drop for TcpStream {
     }
 }
 
-impl tokio::io::AsyncRead for TcpStream {
+impl AsyncRead for TcpStream {
     fn poll_read(
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
-        buf: &mut tokio::io::ReadBuf<'_>,
-    ) -> Poll<io::Result<()>> {
+        buf: &mut [u8],
+    ) -> Poll<io::Result<usize>> {
         let fd = self.stream.as_raw_fd();
         unsafe {
-            let b = &mut *(buf.unfilled_mut() as *mut [std::mem::MaybeUninit<u8>] as *mut [u8]);
+            // let b = &mut *(buf.unfilled_mut() as *mut [std::mem::MaybeUninit<u8>] as *mut [u8]);
             println!("read for fd {}", fd);
-            match self.stream.read(b) {
+            match self.stream.read(buf) {
                 Ok(n) => {
                     println!("read for fd {} done, {}", fd, n);
-                    buf.assume_init(n);
-                    buf.advance(n);
-                    Poll::Ready(Ok(()))
+                    Poll::Ready(Ok(n))
                 }
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                     println!("read for fd {} done WouldBlock", fd);
@@ -126,7 +124,7 @@ impl tokio::io::AsyncRead for TcpStream {
     }
 }
 
-impl tokio::io::AsyncWrite for TcpStream {
+impl AsyncWrite for TcpStream {
     fn poll_write(
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
@@ -152,10 +150,10 @@ impl tokio::io::AsyncWrite for TcpStream {
         Poll::Ready(Ok(()))
     }
 
-    fn poll_shutdown(
+    fn poll_close(
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
-    ) -> Poll<Result<(), io::Error>> {
+    ) -> Poll<io::Result<()>> {
         self.stream.shutdown(std::net::Shutdown::Write)?;
         Poll::Ready(Ok(()))
     }
