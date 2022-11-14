@@ -65,8 +65,7 @@ impl Reactor {
         self.poller.wait(&mut self.buffer, None);
         println!("[reactor] wait done");
 
-        for i in 0..self.buffer.len() {
-            let event = self.buffer.swap_remove(0);
+        for event in self.buffer.drain(..) {
             if event.readable {
                 if let Some(waker) = self.waker_mapping.remove(&(event.key as u64 * 2)) {
                     println!(
