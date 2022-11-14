@@ -15,7 +15,7 @@ pub(crate) fn get_reactor() -> Rc<RefCell<Reactor>> {
 #[derive(Debug)]
 pub struct Reactor {
     poller: Poller,
-    waker_mapping: rustc_hash::FxHashMap<u64, Waker>,
+    wakers: rustc_hash::FxHashMap<usize, Waker>,
 
     buffer: Vec<Event>,
 }
@@ -24,7 +24,7 @@ impl Reactor {
     pub fn new() -> Self {
         Self {
             poller: Poller::new().unwrap(),
-            waker_mapping: Default::default(),
+            wakers: Default::default(),
 
             buffer: Vec::with_capacity(2048),
         }
@@ -39,18 +39,26 @@ impl Reactor {
             .unwrap();
     }
 
-    pub fn modify_readable(&mut self, fd: RawFd, cx: &mut Context) {
-        println!("[reactor] modify_readable fd {} token {}", fd, fd * 2);
+    pub fn set_readable(&mut self, fd: RawFd, cx: &mut Context) {
+        println!(
+            "[reactor] set_readable fd {}; key {}",
+            fd,
+            key_read(fd as usize)
+        );
 
-        self.push_completion(fd as u64 * 2, cx);
+        self.add_waker(key_read(fd as usize), cx);
         let event = polling::Event::readable(fd as usize);
         self.poller.modify(fd, event);
     }
 
-    pub fn modify_writable(&mut self, fd: RawFd, cx: &mut Context) {
-        println!("[reactor] modify_writable fd {}, token {}", fd, fd * 2 + 1);
+    pub fn set_writable(&mut self, fd: RawFd, cx: &mut Context) {
+        println!(
+            "[reactor] set_writable fd {}; key {}",
+            fd,
+            key_write(fd as usize)
+        );
 
-        self.push_completion(fd as u64 * 2 + 1, cx);
+        self.add_waker(key_write(fd as usize), cx);
         let event = polling::Event::writable(fd as usize);
         self.poller.modify(fd, event);
     }
@@ -58,25 +66,25 @@ impl Reactor {
     pub fn wait(&mut self) {
         println!("[reactor] waiting");
         self.poller.wait(&mut self.buffer, None);
-        println!("[reactor] wait done");
+        println!("[reactor] woken up");
 
         for event in self.buffer.drain(..) {
             if event.readable {
-                if let Some(waker) = self.waker_mapping.remove(&(event.key as u64 * 2)) {
+                if let Some(waker) = self.wakers.remove(&key_read(event.key)) {
                     println!(
-                        "[reactor token] fd {} read waker token {} removed and woken",
+                        "[reactor wakers] fd {}; read waker {} removed and to be woken up",
                         event.key,
-                        event.key * 2
+                        key_read(event.key)
                     );
                     waker.wake();
                 }
             }
             if event.writable {
-                if let Some(waker) = self.waker_mapping.remove(&(event.key as u64 * 2 + 1)) {
+                if let Some(waker) = self.wakers.remove(&key_write(event.key)) {
                     println!(
-                        "[reactor token] fd {} write waker token {} removed and woken",
+                        "[reactor wakers] fd {}; write waker {} removed and to be woken up",
                         event.key,
-                        event.key * 2 + 1
+                        key_write(event.key)
                     );
                     waker.wake();
                 }
@@ -87,20 +95,20 @@ impl Reactor {
     pub fn delete(&mut self, fd: RawFd) {
         println!("[reactor] delete fd {}", fd);
 
-        self.waker_mapping.remove(&(fd as u64 * 2));
-        self.waker_mapping.remove(&(fd as u64 * 2 + 1));
+        self.wakers.remove(&key_read(fd as usize));
+        self.wakers.remove(&key_write(fd as usize));
         println!(
-            "[reactor token] fd {} wakers token {}, {} removed",
+            "[reactor wakers] fd {}; wakers key {}, {} removed",
             fd,
-            fd * 2,
-            fd * 2 + 1
+            key_read(fd as usize),
+            key_write(fd as usize)
         );
     }
 
-    fn push_completion(&mut self, token: u64, cx: &mut Context) {
-        println!("[reactor token] token {} waker saved", token);
+    fn add_waker(&mut self, key: usize, cx: &mut Context) {
+        println!("[reactor wakers] waker {} saved", key);
 
-        self.waker_mapping.insert(token, cx.waker().clone());
+        self.wakers.insert(key, cx.waker().clone());
     }
 }
 
@@ -108,4 +116,14 @@ impl Default for Reactor {
     fn default() -> Self {
         Self::new()
     }
+}
+
+#[inline]
+fn key_read(fd: usize) -> usize {
+    fd * 2
+}
+
+#[inline]
+fn key_write(fd: usize) -> usize {
+    fd * 2 + 1
 }

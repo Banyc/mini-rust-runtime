@@ -41,7 +41,7 @@ impl TcpListener {
         let reactor = get_reactor();
         reactor.borrow_mut().add(sk.as_raw_fd());
 
-        println!("tcp bind with fd {}", sk.as_raw_fd());
+        println!("[listener] bind fd {}", sk.as_raw_fd());
         Ok(Self {
             reactor: Rc::downgrade(&reactor),
             listener: sk.into(),
@@ -56,17 +56,26 @@ impl Stream for TcpListener {
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<Option<Self::Item>> {
+        let fd = self.listener.as_raw_fd();
         match self.listener.accept() {
-            Ok((stream, addr)) => Poll::Ready(Some(Ok((stream.into(), addr)))),
+            Ok((stream, addr)) => {
+                println!("[listener] fd {}; accepted from {}", fd, addr);
+
+                Poll::Ready(Some(Ok((stream.into(), addr))))
+            }
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                // modify reactor to register interest
+                println!("[listener] fd {}; WouldBlock", fd);
+                // register read interest to reactor
                 let reactor = self.reactor.upgrade().unwrap();
                 reactor
                     .borrow_mut()
-                    .modify_readable(self.listener.as_raw_fd(), cx);
+                    .set_readable(self.listener.as_raw_fd(), cx);
                 Poll::Pending
             }
-            Err(e) => std::task::Poll::Ready(Some(Err(e))),
+            Err(e) => {
+                println!("[listener] fd {}; err", fd);
+                std::task::Poll::Ready(Some(Err(e)))
+            }
         }
     }
 }
@@ -99,26 +108,23 @@ impl AsyncRead for TcpStream {
         buf: &mut [u8],
     ) -> Poll<io::Result<usize>> {
         let fd = self.stream.as_raw_fd();
-        unsafe {
-            println!("read for fd {}", fd);
-            match self.stream.read(buf) {
-                Ok(n) => {
-                    println!("read for fd {} done, {}", fd, n);
-                    Poll::Ready(Ok(n))
-                }
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    println!("read for fd {} done WouldBlock", fd);
-                    // modify reactor to register interest
-                    let reactor = get_reactor();
-                    reactor
-                        .borrow_mut()
-                        .modify_readable(self.stream.as_raw_fd(), cx);
-                    Poll::Pending
-                }
-                Err(e) => {
-                    println!("read for fd {} done err", fd);
-                    Poll::Ready(Err(e))
-                }
+        match self.stream.read(buf) {
+            Ok(n) => {
+                println!("[stream] read fd {}; len {}", fd, n);
+                Poll::Ready(Ok(n))
+            }
+            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                println!("[stream] read fd {}; WouldBlock", fd);
+                // register read interest to reactor
+                let reactor = get_reactor();
+                reactor
+                    .borrow_mut()
+                    .set_readable(self.stream.as_raw_fd(), cx);
+                Poll::Pending
+            }
+            Err(e) => {
+                println!("[stream] read fd {}; err", fd);
+                Poll::Ready(Err(e))
             }
         }
     }
@@ -130,16 +136,25 @@ impl AsyncWrite for TcpStream {
         cx: &mut std::task::Context<'_>,
         buf: &[u8],
     ) -> Poll<Result<usize, io::Error>> {
+        let fd = self.stream.as_raw_fd();
         match self.stream.write(buf) {
-            Ok(n) => Poll::Ready(Ok(n)),
+            Ok(n) => {
+                println!("[stream] wrote fd {}; len {}", fd, n);
+                Poll::Ready(Ok(n))
+            }
             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                println!("[stream] wrote fd {}; WouldBlock", fd);
+                // register write interest to reactor
                 let reactor = get_reactor();
                 reactor
                     .borrow_mut()
-                    .modify_writable(self.stream.as_raw_fd(), cx);
+                    .set_writable(self.stream.as_raw_fd(), cx);
                 Poll::Pending
             }
-            Err(e) => Poll::Ready(Err(e)),
+            Err(e) => {
+                println!("[stream] wrote fd {}; err", fd);
+                Poll::Ready(Err(e))
+            }
         }
     }
 

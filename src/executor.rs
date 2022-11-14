@@ -42,7 +42,10 @@ impl Executor {
         let t = Rc::new(Task {
             future: RefCell::new(fut.boxed_local()),
         });
-        EX.with(|ex| ex.local_queue.push(t));
+        EX.with(|ex| {
+            println!("[executor] spawn task; push task to executor queue");
+            ex.local_queue.push(t)
+        });
     }
 
     pub fn block_on<F, T, O>(&self, f: F) -> O
@@ -50,7 +53,9 @@ impl Executor {
         F: Fn() -> T,
         T: Future<Output = O> + 'static,
     {
-        let _waker = waker_fn::waker_fn(|| {});
+        let _waker = waker_fn::waker_fn(|| {
+            println!("[outer task] wake; no-op");
+        });
         let cx = &mut Context::from_waker(&_waker);
 
         EX.set(self, || {
@@ -58,24 +63,30 @@ impl Executor {
             pin_utils::pin_mut!(fut);
             loop {
                 // return if the outer future is ready
+                println!("[executor] poll outer future");
                 if let std::task::Poll::Ready(t) = fut.as_mut().poll(cx) {
+                    println!("[executor] outer future ready");
                     break t;
                 }
 
                 // consume all tasks
                 while let Some(t) = self.local_queue.pop() {
+                    println!("[executor] poll local task");
                     let future = t.future.borrow_mut();
-                    let w = waker(Rc::clone(&t));
+                    let w = Rc::clone(&t).into_waker();
                     let mut context = Context::from_waker(&w);
                     let _ = Pin::new(future).as_mut().poll(&mut context);
                 }
 
-                // no task to execute now, it may ready
+                // the outer future may ready now
+                println!("[executor] poll outer future again");
                 if let std::task::Poll::Ready(t) = fut.as_mut().poll(cx) {
+                    println!("[executor] outer future ready");
                     break t;
                 }
 
                 // block for io
+                println!("[executor] block for I/O");
                 self.reactor.borrow_mut().wait();
             }
         })
@@ -104,13 +115,14 @@ impl TaskQueue {
     }
 
     pub(crate) fn push(&self, runnable: Rc<Task>) {
-        println!("add task");
         self.queue.borrow_mut().push_back(runnable);
+        println!("[executor queue] pushed task");
     }
 
     pub(crate) fn pop(&self) -> Option<Rc<Task>> {
-        println!("remove task");
-        self.queue.borrow_mut().pop_front()
+        let task = self.queue.borrow_mut().pop_front();
+        println!("[executor queue] popped task; is some {}", task.is_some());
+        task
     }
 }
 
@@ -118,19 +130,19 @@ pub struct Task {
     future: RefCell<LocalBoxFuture<'static, ()>>,
 }
 
-fn waker(wake: Rc<Task>) -> Waker {
-    let ptr = Rc::into_raw(wake) as *const ();
-    let vtable = &Helper::VTABLE;
-    unsafe { Waker::from_raw(RawWaker::new(ptr, vtable)) }
-}
-
 impl Task {
-    fn wake_(self: Rc<Self>) {
-        Self::wake_by_ref_(&self)
+    fn into_waker(self: Rc<Self>) -> Waker {
+        let ptr = Rc::into_raw(self) as *const ();
+        let vtable = &Helper::VTABLE;
+        unsafe { Waker::from_raw(RawWaker::new(ptr, vtable)) }
     }
 
-    fn wake_by_ref_(self: &Rc<Self>) {
-        EX.with(|ex| ex.local_queue.push(Rc::clone(self)));
+    // TODO: Why it doesn't wake sometimes?
+    fn wake(self: &Rc<Self>) {
+        EX.with(|ex| {
+            println!("[task] wake; push to executor queue");
+            ex.local_queue.push(Rc::clone(self))
+        });
     }
 }
 
@@ -152,12 +164,12 @@ impl Helper {
 
     unsafe fn wake(ptr: *const ()) {
         let rc = Rc::from_raw(ptr as *const Task);
-        rc.wake_();
+        rc.wake();
     }
 
     unsafe fn wake_by_ref(ptr: *const ()) {
         let rc = mem::ManuallyDrop::new(Rc::from_raw(ptr as *const Task));
-        rc.wake_by_ref_();
+        rc.wake();
     }
 
     unsafe fn drop_waker(ptr: *const ()) {
