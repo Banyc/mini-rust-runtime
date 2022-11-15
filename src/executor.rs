@@ -8,10 +8,11 @@ use std::{
     task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
 };
 
-use futures::{future::LocalBoxFuture, Future, FutureExt};
+use futures::{executor::block_on, future::LocalBoxFuture, Future, FutureExt};
 
 use crate::reactor::Reactor;
 
+// A global executor instance for a thread at which `Executor::block_on` is called.
 scoped_tls::scoped_thread_local!(pub(crate) static EX: Executor);
 
 pub struct Executor {
@@ -44,7 +45,19 @@ impl Executor {
         });
     }
 
-    pub fn block_on<F, T, O>(&self, f: F) -> O
+    pub fn block_on<F, T, O>(f: F) -> O
+    where
+        F: Fn() -> T,
+        T: Future<Output = O> + 'static,
+    {
+        if EX.is_set() {
+            panic!("cannot call `block_on` inside of an executor");
+        }
+        let ex = Executor::default();
+        ex.block_on_(f)
+    }
+
+    pub fn block_on_<F, T, O>(&self, f: F) -> O
     where
         F: Fn() -> T,
         T: Future<Output = O> + 'static,

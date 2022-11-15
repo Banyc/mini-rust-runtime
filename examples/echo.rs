@@ -6,8 +6,7 @@ use mini_rust_runtime::executor::Executor;
 use mini_rust_runtime::tcp::TcpListener;
 
 fn main() {
-    let ex = Executor::default();
-    ex.block_on(serve);
+    Executor::block_on(serve);
 }
 
 async fn serve() {
