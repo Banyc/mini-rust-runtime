@@ -7,11 +7,6 @@ use std::{
 
 use polling::{Event, Poller};
 
-#[inline]
-pub(crate) fn get_reactor() -> Rc<RefCell<Reactor>> {
-    crate::executor::EX.with(|ex| Rc::clone(&ex.reactor))
-}
-
 #[derive(Debug)]
 pub struct Reactor {
     poller: Poller,

@@ -57,6 +57,11 @@ impl Executor {
         ex.block_on_(f)
     }
 
+    #[inline]
+    pub(crate) fn reactor() -> Rc<RefCell<Reactor>> {
+        EX.with(|ex| Rc::clone(&ex.reactor))
+    }
+
     pub fn block_on_<F, T, O>(&self, f: F) -> O
     where
         F: Fn() -> T,

@@ -11,7 +11,7 @@ use std::{
 use futures::{AsyncRead, AsyncWrite, Stream};
 use socket2::{Domain, Protocol, Socket, Type};
 
-use crate::{reactor::get_reactor, reactor::Reactor};
+use crate::{executor::Executor, reactor::Reactor};
 
 #[derive(Debug)]
 pub struct TcpListener {
@@ -38,7 +38,7 @@ impl TcpListener {
         sk.listen(1024)?;
 
         // add fd to reactor
-        let reactor = get_reactor();
+        let reactor = Executor::reactor();
         reactor.borrow_mut().add(sk.as_raw_fd());
 
         println!("[listener] bind fd {}", sk.as_raw_fd());
@@ -84,7 +84,7 @@ pub struct TcpStream {
 
 impl From<StdTcpStream> for TcpStream {
     fn from(stream: StdTcpStream) -> Self {
-        let reactor = get_reactor();
+        let reactor = Executor::reactor();
         reactor.borrow_mut().add(stream.as_raw_fd());
         Self { stream }
     }
@@ -94,7 +94,7 @@ impl Drop for TcpStream {
     fn drop(&mut self) {
         let fd = self.stream.as_raw_fd();
         println!("[stream] fd {}; drop", fd);
-        let reactor = get_reactor();
+        let reactor = Executor::reactor();
         reactor.borrow_mut().delete(self.stream.as_raw_fd());
     }
 }
@@ -114,7 +114,7 @@ impl AsyncRead for TcpStream {
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                 println!("[stream] read fd {}; WouldBlock", fd);
                 // register read interest to reactor
-                let reactor = get_reactor();
+                let reactor = Executor::reactor();
                 reactor
                     .borrow_mut()
                     .set_readable(self.stream.as_raw_fd(), cx);
@@ -143,7 +143,7 @@ impl AsyncWrite for TcpStream {
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                 println!("[stream] wrote fd {}; WouldBlock", fd);
                 // register write interest to reactor
-                let reactor = get_reactor();
+                let reactor = Executor::reactor();
                 reactor
                     .borrow_mut()
                     .set_writable(self.stream.as_raw_fd(), cx);
@@ -166,7 +166,7 @@ impl AsyncWrite for TcpStream {
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                 println!("[stream] flushed fd {}; WouldBlock", fd);
                 // register write interest to reactor
-                let reactor = get_reactor();
+                let reactor = Executor::reactor();
                 reactor
                     .borrow_mut()
                     .set_writable(self.stream.as_raw_fd(), cx);
