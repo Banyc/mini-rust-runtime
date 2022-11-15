@@ -3,8 +3,9 @@ use std::{
     io::{self, Read, Write},
     net::{SocketAddr, TcpListener as StdTcpListener, TcpStream as StdTcpStream, ToSocketAddrs},
     os::unix::prelude::AsRawFd,
+    pin::Pin,
     rc::{Rc, Weak},
-    task::Poll,
+    task::{Context, Poll},
 };
 
 use futures::{AsyncRead, AsyncWrite, Stream};
@@ -25,10 +26,9 @@ impl TcpListener {
             .next()
             .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "empty address"))?;
 
-        let domain = if addr.is_ipv6() {
-            Domain::IPV6
-        } else {
-            Domain::IPV4
+        let domain = match addr {
+            SocketAddr::V4(_) => Domain::IPV4,
+            SocketAddr::V6(_) => Domain::IPV6,
         };
         let sk = Socket::new(domain, Type::STREAM, Some(Protocol::TCP))?;
         let addr = socket2::SockAddr::from(addr);
@@ -50,12 +50,9 @@ impl TcpListener {
 }
 
 impl Stream for TcpListener {
-    type Item = std::io::Result<(TcpStream, SocketAddr)>;
+    type Item = io::Result<(TcpStream, SocketAddr)>;
 
-    fn poll_next(
-        self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Option<Self::Item>> {
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let fd = self.listener.as_raw_fd();
         match self.listener.accept() {
             Ok((stream, addr)) => {
@@ -74,7 +71,7 @@ impl Stream for TcpListener {
             }
             Err(e) => {
                 println!("[listener] fd {}; err", fd);
-                std::task::Poll::Ready(Some(Err(e)))
+                Poll::Ready(Some(Err(e)))
             }
         }
     }
@@ -103,8 +100,8 @@ impl Drop for TcpStream {
 
 impl AsyncRead for TcpStream {
     fn poll_read(
-        mut self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
         buf: &mut [u8],
     ) -> Poll<io::Result<usize>> {
         let fd = self.stream.as_raw_fd();
@@ -113,7 +110,7 @@ impl AsyncRead for TcpStream {
                 println!("[stream] read fd {}; len {}", fd, n);
                 Poll::Ready(Ok(n))
             }
-            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                 println!("[stream] read fd {}; WouldBlock", fd);
                 // register read interest to reactor
                 let reactor = get_reactor();
@@ -132,8 +129,8 @@ impl AsyncRead for TcpStream {
 
 impl AsyncWrite for TcpStream {
     fn poll_write(
-        mut self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
         buf: &[u8],
     ) -> Poll<Result<usize, io::Error>> {
         let fd = self.stream.as_raw_fd();
@@ -142,7 +139,7 @@ impl AsyncWrite for TcpStream {
                 println!("[stream] wrote fd {}; len {}", fd, n);
                 Poll::Ready(Ok(n))
             }
-            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                 println!("[stream] wrote fd {}; WouldBlock", fd);
                 // register write interest to reactor
                 let reactor = get_reactor();
@@ -158,17 +155,11 @@ impl AsyncWrite for TcpStream {
         }
     }
 
-    fn poll_flush(
-        self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> Poll<Result<(), io::Error>> {
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
         Poll::Ready(Ok(()))
     }
 
-    fn poll_close(
-        self: std::pin::Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> Poll<io::Result<()>> {
+    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         self.stream.shutdown(std::net::Shutdown::Write)?;
         Poll::Ready(Ok(()))
     }

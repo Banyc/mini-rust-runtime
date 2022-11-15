@@ -5,7 +5,7 @@ use std::{
     mem,
     pin::Pin,
     rc::Rc,
-    task::{Context, RawWaker, RawWakerVTable, Waker},
+    task::{Context, Poll, RawWaker, RawWakerVTable, Waker},
 };
 
 use futures::{future::LocalBoxFuture, Future, FutureExt};
@@ -64,7 +64,7 @@ impl Executor {
             loop {
                 // return if the outer future is ready
                 println!("[executor] poll outer future");
-                if let std::task::Poll::Ready(t) = fut.as_mut().poll(cx) {
+                if let Poll::Ready(t) = fut.as_mut().poll(cx) {
                     println!("[executor] outer future ready");
                     break t;
                 }
@@ -80,7 +80,7 @@ impl Executor {
 
                 // the outer future may ready now
                 println!("[executor] poll outer future again");
-                if let std::task::Poll::Ready(t) = fut.as_mut().poll(cx) {
+                if let Poll::Ready(t) = fut.as_mut().poll(cx) {
                     println!("[executor] outer future ready");
                     break t;
                 }
@@ -133,11 +133,10 @@ pub struct Task {
 impl Task {
     fn into_waker(self: Rc<Self>) -> Waker {
         let ptr = Rc::into_raw(self) as *const ();
-        let vtable = &Helper::VTABLE;
+        let vtable = &RawWakerBuilder::VTABLE;
         unsafe { Waker::from_raw(RawWaker::new(ptr, vtable)) }
     }
 
-    // TODO: Why it doesn't wake sometimes?
     fn wake(self: &Rc<Self>) {
         EX.with(|ex| {
             println!("[task] wake; push to executor queue");
@@ -146,9 +145,9 @@ impl Task {
     }
 }
 
-struct Helper;
+struct RawWakerBuilder;
 
-impl Helper {
+impl RawWakerBuilder {
     const VTABLE: RawWakerVTable = RawWakerVTable::new(
         Self::clone_waker,
         Self::wake,

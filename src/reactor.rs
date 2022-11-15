@@ -34,9 +34,7 @@ impl Reactor {
     pub fn add(&mut self, fd: RawFd) {
         println!("[reactor] add fd {}", fd);
 
-        self.poller
-            .add(fd, polling::Event::none(fd as usize))
-            .unwrap();
+        self.poller.add(fd, Event::none(fd as usize)).unwrap();
     }
 
     pub fn set_readable(&mut self, fd: RawFd, cx: &mut Context) {
@@ -47,7 +45,7 @@ impl Reactor {
         );
 
         self.add_waker(key_read(fd as usize), cx);
-        let event = polling::Event::readable(fd as usize);
+        let event = Event::readable(fd as usize);
         self.poller.modify(fd, event);
     }
 
@@ -59,7 +57,7 @@ impl Reactor {
         );
 
         self.add_waker(key_write(fd as usize), cx);
-        let event = polling::Event::writable(fd as usize);
+        let event = Event::writable(fd as usize);
         self.poller.modify(fd, event);
     }
 
