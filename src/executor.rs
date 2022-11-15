@@ -24,12 +24,6 @@ pub struct Executor {
 
 impl Default for Executor {
     fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl Executor {
-    pub fn new() -> Self {
         Self {
             woken_tasks: TaskQueue::default(),
             reactor: Rc::new(RefCell::new(Reactor::default())),
@@ -37,7 +31,9 @@ impl Executor {
             _marker: PhantomData,
         }
     }
+}
 
+impl Executor {
     pub fn spawn(fut: impl Future<Output = ()> + 'static) {
         let task = Rc::new(Task {
             future: RefCell::new(fut.boxed_local()),
@@ -103,15 +99,12 @@ pub struct TaskQueue {
 
 impl Default for TaskQueue {
     fn default() -> Self {
-        Self::new()
+        const DEFAULT_TASK_QUEUE_SIZE: usize = 4096;
+        Self::new_with_capacity(DEFAULT_TASK_QUEUE_SIZE)
     }
 }
 
 impl TaskQueue {
-    pub fn new() -> Self {
-        const DEFAULT_TASK_QUEUE_SIZE: usize = 4096;
-        Self::new_with_capacity(DEFAULT_TASK_QUEUE_SIZE)
-    }
     pub fn new_with_capacity(capacity: usize) -> Self {
         Self {
             queue: RefCell::new(VecDeque::with_capacity(capacity)),

@@ -20,8 +20,8 @@ pub struct Reactor {
     buffer: Vec<Event>,
 }
 
-impl Reactor {
-    pub fn new() -> Self {
+impl Default for Reactor {
+    fn default() -> Self {
         Self {
             poller: Poller::new().unwrap(),
             wakers: Default::default(),
@@ -29,7 +29,9 @@ impl Reactor {
             buffer: Vec::with_capacity(2048),
         }
     }
+}
 
+impl Reactor {
     // Epoll related
     pub fn add(&mut self, fd: RawFd) {
         println!("[reactor] add fd {}", fd);
@@ -107,12 +109,6 @@ impl Reactor {
         println!("[reactor wakers] waker {} saved", key);
 
         self.wakers.insert(key, cx.waker().clone());
-    }
-}
-
-impl Default for Reactor {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
