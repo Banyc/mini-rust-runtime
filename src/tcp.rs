@@ -133,7 +133,7 @@ impl AsyncWrite for TcpStream {
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buf: &[u8],
-    ) -> Poll<Result<usize, io::Error>> {
+    ) -> Poll<io::Result<usize>> {
         let fd = self.stream.as_raw_fd();
         match self.stream.write(buf) {
             Ok(n) => {
@@ -156,11 +156,32 @@ impl AsyncWrite for TcpStream {
         }
     }
 
-    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Result<(), io::Error>> {
-        Poll::Ready(Ok(()))
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        let fd = self.stream.as_raw_fd();
+        match self.stream.flush() {
+            Ok(()) => {
+                println!("[stream] flushed fd {}", fd);
+                Poll::Ready(Ok(()))
+            }
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                println!("[stream] flushed fd {}; WouldBlock", fd);
+                // register write interest to reactor
+                let reactor = get_reactor();
+                reactor
+                    .borrow_mut()
+                    .set_writable(self.stream.as_raw_fd(), cx);
+                Poll::Pending
+            }
+            Err(e) => {
+                println!("[stream] flushed fd {}; err", fd);
+                Poll::Ready(Err(e))
+            }
+        }
     }
 
     fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        let fd = self.stream.as_raw_fd();
+        println!("[stream] close write fd {}", fd);
         self.stream.shutdown(std::net::Shutdown::Write)?;
         Poll::Ready(Ok(()))
     }
