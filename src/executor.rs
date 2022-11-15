@@ -15,7 +15,7 @@ use crate::reactor::Reactor;
 scoped_tls::scoped_thread_local!(pub(crate) static EX: Executor);
 
 pub struct Executor {
-    local_queue: TaskQueue,
+    woken_tasks: TaskQueue,
     pub(crate) reactor: Rc<RefCell<Reactor>>,
 
     /// Make sure the type is `!Send` and `!Sync`.
@@ -31,7 +31,7 @@ impl Default for Executor {
 impl Executor {
     pub fn new() -> Self {
         Self {
-            local_queue: TaskQueue::default(),
+            woken_tasks: TaskQueue::default(),
             reactor: Rc::new(RefCell::new(Reactor::default())),
 
             _marker: PhantomData,
@@ -39,12 +39,12 @@ impl Executor {
     }
 
     pub fn spawn(fut: impl Future<Output = ()> + 'static) {
-        let t = Rc::new(Task {
+        let task = Rc::new(Task {
             future: RefCell::new(fut.boxed_local()),
         });
         EX.with(|ex| {
             println!("[executor] spawn task; push task to executor queue");
-            ex.local_queue.push(t)
+            ex.woken_tasks.push(task)
         });
     }
 
@@ -53,36 +53,40 @@ impl Executor {
         F: Fn() -> T,
         T: Future<Output = O> + 'static,
     {
-        let _waker = waker_fn::waker_fn(|| {
+        let waker_noop = waker_fn::waker_fn(|| {
             println!("[outer task] wake; no-op");
         });
-        let cx = &mut Context::from_waker(&_waker);
+        let f_cx = &mut Context::from_waker(&waker_noop);
 
         EX.set(self, || {
-            let fut = f();
-            pin_utils::pin_mut!(fut);
+            let f_fut = f();
+            pin_utils::pin_mut!(f_fut);
             loop {
                 // return if the outer future is ready
                 println!("[executor] poll outer future");
-                if let Poll::Ready(t) = fut.as_mut().poll(cx) {
+                if let Poll::Ready(out) = f_fut.as_mut().poll(f_cx) {
                     println!("[executor] outer future ready");
-                    break t;
+                    break out;
                 }
 
-                // consume all tasks
-                while let Some(t) = self.local_queue.pop() {
-                    println!("[executor] poll local task");
-                    let future = t.future.borrow_mut();
-                    let w = Rc::clone(&t).into_waker();
-                    let mut context = Context::from_waker(&w);
-                    let _ = Pin::new(future).as_mut().poll(&mut context);
+                // consume all woken tasks
+                while let Some(task) = self.woken_tasks.pop() {
+                    println!("[executor] polled woken task");
+                    let fut = task.future.borrow_mut();
+
+                    // If the polling returns `Poll::Ready`, the task is done.
+                    // If the polling returns `Poll::Pending`, the task has not been done.
+                    // - We need to provide a waker for the task to the reactor.
+                    let waker = Rc::clone(&task).into_waker();
+                    let mut cx = Context::from_waker(&waker);
+                    let _ = Pin::new(fut).as_mut().poll(&mut cx);
                 }
 
                 // the outer future may ready now
                 println!("[executor] poll outer future again");
-                if let Poll::Ready(t) = fut.as_mut().poll(cx) {
+                if let Poll::Ready(out) = f_fut.as_mut().poll(f_cx) {
                     println!("[executor] outer future ready");
-                    break t;
+                    break out;
                 }
 
                 // block for io
@@ -133,21 +137,21 @@ pub struct Task {
 impl Task {
     fn into_waker(self: Rc<Self>) -> Waker {
         let ptr = Rc::into_raw(self) as *const ();
-        let vtable = &RawWakerBuilder::VTABLE;
+        let vtable = &RawWakerVTableBuilder::VTABLE;
         unsafe { Waker::from_raw(RawWaker::new(ptr, vtable)) }
     }
 
     fn wake(self: &Rc<Self>) {
         EX.with(|ex| {
-            println!("[task] wake; push to executor queue");
-            ex.local_queue.push(Rc::clone(self))
+            println!("[task] wake; push to woken tasks");
+            ex.woken_tasks.push(Rc::clone(self))
         });
     }
 }
 
-struct RawWakerBuilder;
+struct RawWakerVTableBuilder;
 
-impl RawWakerBuilder {
+impl RawWakerVTableBuilder {
     const VTABLE: RawWakerVTable = RawWakerVTable::new(
         Self::clone_waker,
         Self::wake,
