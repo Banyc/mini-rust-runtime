@@ -39,7 +39,7 @@ impl Reactor {
 
     pub fn set_readable(&mut self, fd: RawFd, cx: &mut Context) {
         println!(
-            "[reactor] set_readable fd {}; key {}",
+            "[reactor] set_readable fd {}; add waker {}",
             fd,
             key_read(fd as usize)
         );
@@ -51,7 +51,7 @@ impl Reactor {
 
     pub fn set_writable(&mut self, fd: RawFd, cx: &mut Context) {
         println!(
-            "[reactor] set_writable fd {}; key {}",
+            "[reactor] set_writable fd {}; add waker {}",
             fd,
             key_write(fd as usize)
         );
@@ -96,7 +96,7 @@ impl Reactor {
         self.wakers.remove(&key_read(fd as usize));
         self.wakers.remove(&key_write(fd as usize));
         println!(
-            "[reactor wakers] fd {}; wakers key {}, {} removed",
+            "[reactor wakers] fd {}; wakers {}, {} removed",
             fd,
             key_read(fd as usize),
             key_write(fd as usize)
