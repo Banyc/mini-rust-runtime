@@ -15,7 +15,6 @@ use crate::{executor::Executor, reactor::Reactor};
 
 #[derive(Debug)]
 pub struct TcpListener {
-    reactor: Weak<RefCell<Reactor>>,
     listener: StdTcpListener,
 }
 
@@ -43,7 +42,6 @@ impl TcpListener {
 
         println!("[listener] bind fd {}", sk.as_raw_fd());
         Ok(Self {
-            reactor: Rc::downgrade(&reactor),
             listener: sk.into(),
         })
     }
@@ -63,7 +61,7 @@ impl Stream for TcpListener {
             Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
                 println!("[listener] fd {}; WouldBlock", fd);
                 // register read interest to reactor
-                let reactor = self.reactor.upgrade().unwrap();
+                let reactor = Executor::reactor();
                 reactor
                     .borrow_mut()
                     .set_readable(self.listener.as_raw_fd(), cx);
