@@ -10,7 +10,7 @@ use std::{
 
 use futures::{executor::block_on, future::LocalBoxFuture, Future, FutureExt};
 
-use crate::reactor::Reactor;
+use crate::multiplexing::reactor::Reactor;
 
 // A global executor instance for a thread at which `Executor::block_on` is called.
 scoped_tls::scoped_thread_local!(pub(crate) static EX: Executor);

@@ -2,8 +2,7 @@
 //! Use `nc 127.0.0.1 30000` to connect.
 
 use futures::{AsyncReadExt, AsyncWriteExt, StreamExt};
-use mini_rust_runtime::executor::Executor;
-use mini_rust_runtime::tcp::TcpListener;
+use mini_rust_runtime::{executor::Executor, multiplexing::tcp::TcpListener};
 
 fn main() {
     Executor::block_on(serve);

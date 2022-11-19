@@ -1,6 +1,6 @@
 #![allow(unused)]
 
+pub mod async_io;
 pub mod executor;
-pub mod tcp;
-
-mod reactor;
+pub mod multiplexing;
+pub mod reactor;
