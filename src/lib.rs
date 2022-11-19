@@ -1,6 +1,5 @@
 #![allow(unused)]
 
 pub mod executor;
-pub mod tcp;
-
-mod reactor;
+pub mod multiplexing;
+pub mod reactor;

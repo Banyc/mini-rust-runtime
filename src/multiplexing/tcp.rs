@@ -11,7 +11,7 @@ use std::{
 use futures::{AsyncRead, AsyncWrite, Stream};
 use socket2::{Domain, Protocol, Socket, Type};
 
-use crate::{executor::Executor, reactor::Reactor};
+use crate::executor::Executor;
 
 #[derive(Debug)]
 pub struct TcpListener {
