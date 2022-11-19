@@ -13,3 +13,6 @@ futures = "0.3"
 waker-fn = "1"
 pin-utils = "0.1"
 rustc-hash = "1"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+io-uring = "0.5.9"
