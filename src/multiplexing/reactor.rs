@@ -12,7 +12,7 @@ pub struct Reactor {
     poller: Poller,
     wakers: rustc_hash::FxHashMap<usize, Waker>,
 
-    pending: Vec<Event>,
+    ready: Vec<Event>,
 }
 
 impl Default for Reactor {
@@ -21,7 +21,7 @@ impl Default for Reactor {
             poller: Poller::new().unwrap(),
             wakers: Default::default(),
 
-            pending: Vec::with_capacity(2048),
+            ready: Vec::with_capacity(2048),
         }
     }
 }
@@ -60,10 +60,10 @@ impl Reactor {
 
     pub fn wait(&mut self) {
         println!("[reactor] waiting");
-        self.poller.wait(&mut self.pending, None);
+        self.poller.wait(&mut self.ready, None);
         println!("[reactor] woken up");
 
-        for event in self.pending.drain(..) {
+        for event in self.ready.drain(..) {
             if event.readable {
                 if let Some(waker) = self.wakers.remove(&key_read(event.key)) {
                     println!(
